@@ -1,0 +1,6 @@
+# Add your Discord bot tokens here, one per line
+# Example:
+# MjM4NDk3NDU2MTIzNDU2OTcx.CuNwKA.your_token_here
+# MTI3NjU0OTMxNjQyNzkyODk1.CuOdLQ.another_token_here
+
+# Tokens are kept secret and not committed to Git (add to .gitignore)
