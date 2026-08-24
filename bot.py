@@ -200,15 +200,30 @@ class DiscordAPI:
 def parse_balance(message_text: str) -> Optional[int]:
     """
     Extract balance amount from bot's response
-    Expected format: "You have 5000 cowoncy" or similar
+    Expected formats:
+    - "Itachi hu, you currently have 188,784 cowoncy!"
+    - "you have 5000 cowoncy"
+    - "5000 cowoncy"
+    - "1234"
     """
     try:
-        # Look for patterns like "5000" in the message
         import re
-        match = re.search(r'([0-9,]+)\s*(?:cowoncy|coins?|owo)?', message_text, re.IGNORECASE)
-        if match:
-            amount_str = match.group(1).replace(',', '')
-            return int(amount_str)
+        # Look for "have XXXX" or "XXXX cowoncy/coins"
+        patterns = [
+            r'have\s+([0-9,]+)',  # "have 188,784"
+            r'([0-9,]+)\s+cowoncy',  # "188,784 cowoncy"
+            r'([0-9,]+)\s+coins?',  # "1000 coin" or "1000 coins"
+            r'^([0-9,]+)$',  # Just a number
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, message_text, re.IGNORECASE)
+            if match:
+                amount_str = match.group(1).replace(',', '')
+                balance = int(amount_str)
+                logger.debug(f"Parsed balance: {balance} from '{message_text}'")
+                return balance
+    
     except Exception as e:
         logger.debug(f"Failed to parse balance from '{message_text}': {e}")
     
@@ -285,18 +300,24 @@ class OwOBettingBot:
             if not api.send_message(config.CHANNEL_ID, config.BALANCE_CHECK_COMMAND):
                 return None
             
-            # Wait and fetch response
-            time.sleep(config.BALANCE_CHECK_DELAY)
-            messages = api.get_messages(config.CHANNEL_ID, limit=5)
+            # Wait for bot to respond
+            time.sleep(config.MESSAGE_WAIT_TIMEOUT)
+            messages = api.get_messages(config.CHANNEL_ID, limit=10)
             
-            # Find response from OwO bot
+            # Find response from OwO bot (most recent message)
+            if not messages:
+                logger.warning(f"{cyan(f'[{state.user_id}]')} No messages found in channel")
+                return None
+            
             for msg in messages:
                 if msg.get('author', {}).get('id') == config.OWO_BOT_ID:
-                    balance = parse_balance(msg.get('content', ''))
+                    content = msg.get('content', '')
+                    balance = parse_balance(content)
                     if balance is not None:
+                        logger.debug(f"{cyan(f'[{state.user_id}]')} Balance check response: {content}")
                         return balance
             
-            logger.warning(f"{cyan(f'[{state.user_id}]')} Could not parse balance from response")
+            logger.warning(f"{cyan(f'[{state.user_id}]')} OwO bot message not found or could not parse balance")
             return None
         
         except Exception as e:
@@ -316,10 +337,10 @@ class OwOBettingBot:
             logger.error(f"{cyan(f'[{state.user_id}]')} Error placing bet: {e}")
             return False
     
-    def process_bet_result(self, state: AccountState, new_balance: int) -> Tuple[str, int]:
+    def process_bet_result(self, state: AccountState, new_balance: int) -> Tuple[str, int, str, int]:
         """
         Determine win/loss based on balance change
-        Returns: (result_type, next_bet_amount)
+        Returns: (result_type, next_bet_amount, next_game, profit)
         result_type: "win", "loss", or "breakeven"
         """
         previous = state.previous_balance
